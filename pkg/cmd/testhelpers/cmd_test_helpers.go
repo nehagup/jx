@@ -155,18 +155,7 @@ func CreateTestJxHomeDir() (string, string, error) {
 	if err != nil {
 		return "", "", err
 	}
-	contents, err := ioutil.ReadDir(originalDir)
-	if err != nil {
-		return "", "", err
-	}
-	for _, f := range contents {
-		if strings.HasSuffix(f.Name(), ".yaml") {
-			err = util.CopyFileOrDir(path.Join(originalDir, f.Name()), path.Join(newDir, f.Name()), true)
-			if err != nil {
-				return "", "", err
-			}
-		}
-	}
+
 	err = os.Setenv("JX_HOME", newDir)
 	if err != nil {
 		os.Unsetenv("JX_HOME")
