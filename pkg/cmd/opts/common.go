@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jenkins-x/jx/pkg/config"
+	"github.com/jenkins-x/jx/pkg/kustomize"
 
 	"github.com/jenkins-x/jx/pkg/kube/cluster"
 
@@ -146,6 +147,7 @@ type CommonOptions struct {
 	kserveClient        kserve.Interface
 	kubeClient          kubernetes.Interface
 	kuber               kube.Kuber
+	kustomizer          kustomize.Kustomizer
 	prowJobClient       prowjobclient.Interface
 	resourcesInstaller  resources.Installer
 	systemVaultClient   vault.Client
@@ -1287,4 +1289,12 @@ func (o *CommonOptions) IsInsecureSSLWebhooks() (bool, error) {
 		return false, nil
 	}
 	return isStaging, nil
+}
+
+// Kustomize returns or creates the kustomize client
+func (o *CommonOptions) Kustomize() kustomize.Kustomizer {
+	if o.kustomizer == nil {
+		return o.factory.CreateKustomizer()
+	}
+	return o.kustomizer
 }

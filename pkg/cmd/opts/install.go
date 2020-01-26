@@ -223,25 +223,39 @@ func (o *CommonOptions) InstallGlooctl() error {
 }
 
 // InstallKustomize installs kustomize
-func (o *CommonOptions) InstallKustomize() error {
+func (o *CommonOptions) InstallKustomize(installationDir ...string) (err error) {
+	var binDir string
+	var latestVersion semver.Version
+
 	if runtime.GOOS == "darwin" && !o.NoBrew {
 		return o.RunCommand("brew", "install", "kustomize")
 	}
-	binDir, err := util.JXBinLocation()
-	if err != nil {
-		return err
+
+	if len(installationDir) == 0 || installationDir[0] == "" {
+		binDir, err = util.JXBinLocation()
+		if err != nil {
+			return err
+		}
+	} else {
+		binDir = installationDir[0]
 	}
+
 	fileName, flag, err := packages.ShouldInstallBinary("kustomize")
 	if err != nil || !flag {
 		return err
 	}
 
-	latestVersion, err := util.GetLatestVersionFromGitHub("kubernetes-sigs", "kustomize")
-	if err != nil {
-		return fmt.Errorf("unable to get latest version for github.com/%s/%s %v", "kubernetes-sigs", "kustomize", err)
+	text, err := util.GetLatestVersionStringFromGitHub("kubernetes-sigs", "kustomize")
+	if text == "" {
+		return fmt.Errorf("No version found")
 	}
 
-	clientURL := fmt.Sprintf("https://github.com/kubernetes-sigs/kustomize/releases/download/v%v/kustomize_%s_%s_%s", latestVersion, latestVersion, runtime.GOOS, runtime.GOARCH)
+	latestVersion, err = semver.Make(strings.TrimPrefix(text, "kustomize/v"))
+	if err != nil {
+		return fmt.Errorf("Unable to get latest version for github.com/%s/%s %v", "kubernetes-sigs", "kustomize", err)
+	}
+
+	clientURL := fmt.Sprintf("https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%%2Fv%s/kustomize_v%s_%s_%s.tar.gz", latestVersion, latestVersion, runtime.GOOS, runtime.GOARCH)
 	fullPath := filepath.Join(binDir, fileName)
 	tmpFile := fullPath + ".tmp"
 	err = packages.DownloadFile(clientURL, tmpFile)
