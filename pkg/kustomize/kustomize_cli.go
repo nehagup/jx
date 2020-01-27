@@ -1,8 +1,6 @@
 package kustomize
 
 import (
-	"strings"
-
 	"github.com/jenkins-x/jx/pkg/util"
 )
 
@@ -13,14 +11,8 @@ type KustomizeCLI struct {
 
 // NewKustomizeCLI creates a new KustomizeCLI instance configured to use the provided helm CLI in
 // the given current working directory
-func NewKustomizeCLI(args ...string) *KustomizeCLI {
-	a := []string{}
-	for _, x := range args {
-		y := strings.Split(x, " ")
-		a = append(a, y...)
-	}
+func NewKustomizeCLI() *KustomizeCLI {
 	runner := &util.Command{
-		Args: a,
 		Name: "kustomize",
 	}
 	cli := &KustomizeCLI{

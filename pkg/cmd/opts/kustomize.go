@@ -6,19 +6,14 @@ import (
 )
 
 // EnsureKustomize ensures kustomize is installed
-func (o *CommonOptions) EnsureKustomize(installationBinDir ...string) error {
+func (o *CommonOptions) EnsureKustomize() error {
 	_, err := o.Kustomize().Version()
 	if err == nil {
 		log.Logger().Info("Kustomize is already installed")
 		return nil
 	}
 
-	binDir := ""
-	if len(installationBinDir) != 0 {
-		binDir = installationBinDir[0]
-	}
-
-	err = o.InstallKustomize(binDir)
+	err = o.InstallKustomize()
 	if err != nil {
 		return errors.Wrap(err, "Failed to install Kustomize")
 	}
