@@ -2,7 +2,6 @@ package opts
 
 import (
 	"fmt"
-	"github.com/jenkins-x/jx/pkg/kustomize"
 	"io"
 	"os"
 	"path/filepath"
@@ -38,6 +37,7 @@ import (
 	"github.com/jenkins-x/jx/pkg/gits"
 	"github.com/jenkins-x/jx/pkg/helm"
 	"github.com/jenkins-x/jx/pkg/kube"
+	"github.com/jenkins-x/jx/pkg/kustomize"
 	"github.com/jenkins-x/jx/pkg/log"
 	"github.com/jenkins-x/jx/pkg/table"
 	"github.com/jenkins-x/jx/pkg/util"
