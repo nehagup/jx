@@ -2,6 +2,7 @@ package opts
 
 import (
 	"fmt"
+	"github.com/jenkins-x/jx/pkg/kustomize"
 	"io"
 	"os"
 	"path/filepath"
@@ -9,7 +10,6 @@ import (
 	"time"
 
 	"github.com/jenkins-x/jx/pkg/config"
-	"github.com/jenkins-x/jx/pkg/kustomize"
 
 	"github.com/jenkins-x/jx/pkg/kube/cluster"
 

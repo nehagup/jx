@@ -223,21 +223,14 @@ func (o *CommonOptions) InstallGlooctl() error {
 }
 
 // InstallKustomize installs kustomize
-func (o *CommonOptions) InstallKustomize(installationDir ...string) (err error) {
-	var binDir string
-	var latestVersion semver.Version
-
+func (o *CommonOptions) InstallKustomize() (err error) {
 	if runtime.GOOS == "darwin" && !o.NoBrew {
 		return o.RunCommand("brew", "install", "kustomize")
 	}
 
-	if len(installationDir) == 0 || installationDir[0] == "" {
-		binDir, err = util.JXBinLocation()
-		if err != nil {
-			return err
-		}
-	} else {
-		binDir = installationDir[0]
+	binDir, err := util.JXBinLocation()
+	if err != nil {
+		return err
 	}
 
 	fileName, flag, err := packages.ShouldInstallBinary("kustomize")
@@ -245,27 +238,46 @@ func (o *CommonOptions) InstallKustomize(installationDir ...string) (err error) 
 		return err
 	}
 
-	text, err := util.GetLatestVersionStringFromGitHub("kubernetes-sigs", "kustomize")
-	if text == "" {
-		return fmt.Errorf("No version found")
-	}
-
-	latestVersion, err = semver.Make(strings.TrimPrefix(text, "kustomize/v"))
+	// get the stable jx supported version of kustomize to be install
+	versionResolver, err := o.GetVersionResolver()
 	if err != nil {
-		return fmt.Errorf("Unable to get latest version for github.com/%s/%s %v", "kubernetes-sigs", "kustomize", err)
+		log.Logger().Warnf("Unable to get version resolver for jenkins-x-versions %s", err)
 	}
 
-	clientURL := fmt.Sprintf("https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%%2Fv%s/kustomize_v%s_%s_%s.tar.gz", latestVersion, latestVersion, runtime.GOOS, runtime.GOARCH)
-	fullPath := filepath.Join(binDir, fileName)
-	tmpFile := fullPath + ".tmp"
-	err = packages.DownloadFile(clientURL, tmpFile)
+	stableVersion, err := versionResolver.StableVersion(versionstream.KindPackage, "kustomize")
+	if err != nil {
+		return fmt.Errorf("Unable to get stable version from the jenkins-x-versions for github.com/%s/%s %v ", "kubernetes-sigs", "kustomize", err)
+	}
+
+	clientURL := fmt.Sprintf("https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%%2Fv%s/kustomize_v%s_%s_%s.tar.gz", stableVersion.Version, stableVersion.Version, runtime.GOOS, runtime.GOARCH)
+	tmpDir := filepath.Join(binDir, "kustomize.tmp")
+	err = os.MkdirAll(tmpDir, util.DefaultWritePermissions)
 	if err != nil {
 		return err
 	}
-	err = util.RenameFile(tmpFile, fullPath)
+	fullPath := filepath.Join(binDir, "kustomize")
+	tarFile := filepath.Join(tmpDir, fileName+".tar.gz")
+	err = packages.DownloadFile(clientURL, tarFile)
 	if err != nil {
 		return err
 	}
+	err = util.UnTargz(tarFile, tmpDir, []string{"kustomize"})
+	if err != nil {
+		return err
+	}
+	err = os.Remove(tarFile)
+	if err != nil {
+		return err
+	}
+	err = os.Rename(filepath.Join(tmpDir, "kustomize"), fullPath)
+	if err != nil {
+		return err
+	}
+	err = os.RemoveAll(tmpDir)
+	if err != nil {
+		return err
+	}
+
 	return os.Chmod(fullPath, 0755)
 }
 

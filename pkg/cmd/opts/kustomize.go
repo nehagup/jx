@@ -1,24 +1,50 @@
 package opts
 
 import (
+	"github.com/blang/semver"
 	"github.com/jenkins-x/jx/pkg/log"
+	"github.com/jenkins-x/jx/pkg/versionstream"
 	"github.com/pkg/errors"
 )
 
 // EnsureKustomize ensures kustomize is installed
-func (o *CommonOptions) EnsureKustomize(installationBinDir ...string) error {
-	_, err := o.Kustomize().Version()
-	if err == nil {
-		log.Logger().Info("Kustomize is already installed")
-		return nil
+func (o *CommonOptions) EnsureKustomize() error {
+	version, err := o.Kustomize().Version()
+
+	if err == nil && version != "" {
+		// get the stable jx supported version of kustomize to be install
+		versionResolver, err := o.GetVersionResolver()
+		if err != nil {
+			return errors.Wrapf(err, "Unable to get version resolver for jenkins-x-versions")
+		}
+
+		stableVersion, err := versionResolver.StableVersion(versionstream.KindPackage, "kustomize")
+		if err != nil {
+			return errors.Wrapf(err, "Unable to get stable version from the jenkins-x-versions for github.com/%s/%s %v ", "kubernetes-sigs", "kustomize", err)
+		}
+
+		currVersion, err := semver.Make(version[12:17])
+		if err != nil {
+			log.Logger().Warnf("Unable to get currently installed Kustomize sem-version %s", err)
+		}
+		lowerLimit, err := semver.Make(stableVersion.Version)
+		if err != nil {
+			log.Logger().Warnf("Unable to get lowest supported stable Kustomize sem-version %s", err)
+		}
+		upperLimit, err := semver.Make(stableVersion.UpperLimit)
+		if err != nil {
+			log.Logger().Warnf("Unable to get highest supported stable Kustomize sem-version %s", err)
+		}
+
+		if currVersion.GTE(lowerLimit) && currVersion.LTE(upperLimit) {
+			log.Logger().Info("Kustomize is already installed version")
+			return nil
+		}
+
+		return errors.Wrapf(err, "Unsupported version of Kustomize installed. Install kustomize version above %s or below %s ", lowerLimit, upperLimit)
 	}
 
-	binDir := ""
-	if len(installationBinDir) != 0 {
-		binDir = installationBinDir[0]
-	}
-
-	err = o.InstallKustomize(binDir)
+	err = o.InstallKustomize()
 	if err != nil {
 		return errors.Wrap(err, "Failed to install Kustomize")
 	}
