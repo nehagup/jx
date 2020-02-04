@@ -1,8 +1,8 @@
 package kustomize
 
 import (
-	"github.com/jenkins-x/jx/pkg/util"
 	"github.com/jenkins-x/jx/pkg/log"
+	"github.com/jenkins-x/jx/pkg/util"
 	"os"
 	"path/filepath"
 	"strings"
