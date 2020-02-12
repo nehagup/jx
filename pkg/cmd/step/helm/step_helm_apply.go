@@ -2,6 +2,7 @@ package helm
 
 import (
 	"fmt"
+	"github.com/jenkins-x/jx/pkg/kustomize"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -373,15 +374,29 @@ func (o *StepHelmApplyOptions) Run() error {
 		helmOptions.VersionsGitRef = requirements.VersionStream.Ref
 	}
 
-	if o.Wait {
-		helmOptions.Wait = true
-		err = o.InstallChartWithOptionsAndTimeout(helmOptions, "600")
+
+	k := kustomize.NewKustomizeCLI(dir)
+	if k.HasKustomize() {
+		err := o.EnsureKustomize()
+		if err == nil {
+			err = k.ApplyKustomize()
+			if err != nil {
+				// throw error
+			}
+		}
+		// throw error
 	} else {
-		err = o.InstallChartWithOptions(helmOptions)
+		if o.Wait {
+			helmOptions.Wait = true
+			err = o.InstallChartWithOptionsAndTimeout(helmOptions, "600")
+		} else {
+			err = o.InstallChartWithOptions(helmOptions)
+		}
+		if err != nil {
+			return errors.Wrapf(err, "upgrading helm chart '%s'", chartName)
+		}
 	}
-	if err != nil {
-		return errors.Wrapf(err, "upgrading helm chart '%s'", chartName)
-	}
+
 	return nil
 }
 

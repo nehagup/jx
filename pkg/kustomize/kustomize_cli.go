@@ -72,3 +72,9 @@ func (k *KustomizeCLI) FindKustomize() (resource []string) {
 func (k *KustomizeCLI) SetCWD(dir string) {
 	k.CWD = dir
 }
+
+//
+func (k *KustomizeCLI) ApplyKustomize() (err error) {
+
+	return
+}

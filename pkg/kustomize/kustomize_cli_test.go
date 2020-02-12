@@ -23,6 +23,7 @@ func TestKustomizeCLI_FindKustomize_HasKustomize(t *testing.T) {
 			log.Logger().Warnf("Unable to remove temporary directory %s: %s", testJXHome, err)
 		}
 	}()
+
 	err = os.MkdirAll(filepath.Join(testJXHome, "bin/base/charts"), os.ModePerm)
 	err = os.MkdirAll(filepath.Join(testJXHome, "bin/base/templates"), os.ModePerm)
 	err = os.MkdirAll(filepath.Join(testJXHome, "bin/staging"), os.ModePerm)
