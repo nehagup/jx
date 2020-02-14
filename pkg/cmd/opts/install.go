@@ -223,14 +223,14 @@ func (o *CommonOptions) InstallGlooctl() error {
 }
 
 // InstallKustomize installs kustomize
-func (o *CommonOptions) InstallKustomize() (err error) {
+func (o *CommonOptions) InstallKustomize() error {
 	if runtime.GOOS == "darwin" && !o.NoBrew {
 		return o.RunCommand("brew", "install", "kustomize")
 	}
 
 	binDir, err := util.JXBinLocation()
 	if err != nil {
-		return err
+		return errors.Wrapf(err, "Unable to find JXBinLocation")
 	}
 
 	fileName, flag, err := packages.ShouldInstallBinary("kustomize")
@@ -246,36 +246,44 @@ func (o *CommonOptions) InstallKustomize() (err error) {
 
 	stableVersion, err := versionResolver.StableVersion(versionstream.KindPackage, "kustomize")
 	if err != nil {
-		return fmt.Errorf("Unable to get stable version from the jenkins-x-versions for github.com/%s/%s %v ", "kubernetes-sigs", "kustomize", err)
+		return errors.Wrapf(err, "Unable to get stable version from the jenkins-x-versions for github.com/%s/%s %v ", "kubernetes-sigs", "kustomize", err)
 	}
 
 	clientURL := fmt.Sprintf("https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%%2Fv%s/kustomize_v%s_%s_%s.tar.gz", stableVersion.Version, stableVersion.Version, runtime.GOOS, runtime.GOARCH)
 	tmpDir := filepath.Join(binDir, "kustomize.tmp")
 	err = os.MkdirAll(tmpDir, util.DefaultWritePermissions)
 	if err != nil {
-		return err
+		return errors.Wrapf(err, "Failed to create tmp directory")
 	}
+
+	defer func() {
+		err = os.RemoveAll(tmpDir)
+		if err != nil {
+			log.Logger().Warnf("Failed to Remove tmp directory: %v", err)
+		}
+	}()
+
 	fullPath := filepath.Join(binDir, "kustomize")
 	tarFile := filepath.Join(tmpDir, fileName+".tar.gz")
+	defer func() {
+		err = os.Remove(tarFile)
+		if err != nil {
+			log.Logger().Warnf("Failed to Remove tarFile : %v", err)
+		}
+	}()
+
 	err = packages.DownloadFile(clientURL, tarFile)
 	if err != nil {
-		return err
+		return errors.Wrapf(err, "Failed to Download File")
 	}
 	err = util.UnTargz(tarFile, tmpDir, []string{"kustomize"})
 	if err != nil {
-		return err
+		return errors.Wrapf(err, "Failed to Un-tar file")
 	}
-	err = os.Remove(tarFile)
-	if err != nil {
-		return err
-	}
+
 	err = os.Rename(filepath.Join(tmpDir, "kustomize"), fullPath)
 	if err != nil {
-		return err
-	}
-	err = os.RemoveAll(tmpDir)
-	if err != nil {
-		return err
+		return errors.Wrapf(err, "Failed to rename file")
 	}
 
 	return os.Chmod(fullPath, 0755)
