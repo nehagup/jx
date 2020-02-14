@@ -230,18 +230,23 @@ func (o *CommonOptions) InstallKustomize() error {
 
 	binDir, err := util.JXBinLocation()
 	if err != nil {
-		return errors.Wrapf(err, "Unable to find JXBinLocation")
+		return errors.Wrapf(err, "unable to find JXBinLocation")
 	}
 
-	fileName, flag, err := packages.ShouldInstallBinary("kustomize")
-	if err != nil || !flag {
-		return err
+	fullBinaryPath := filepath.Join(binDir, "kustomize")
+	exists, err := util.FileExists(fullBinaryPath)
+	if err != nil {
+		return errors.Wrapf(err, "unable to verify if binary exists")
+	}
+	if exists {
+		log.Logger().Debugf("Binary %s already exists", fullBinaryPath)
+		return nil
 	}
 
 	// get the stable jx supported version of kustomize to be install
 	versionResolver, err := o.GetVersionResolver()
 	if err != nil {
-		log.Logger().Warnf("Unable to get version resolver for jenkins-x-versions %s", err)
+		return errors.Wrapf(err, "unable to retrieve version resolver")
 	}
 
 	stableVersion, err := versionResolver.StableVersion(versionstream.KindPackage, "kustomize")
@@ -264,7 +269,7 @@ func (o *CommonOptions) InstallKustomize() error {
 	}()
 
 	fullPath := filepath.Join(binDir, "kustomize")
-	tarFile := filepath.Join(tmpDir, fileName+".tar.gz")
+	tarFile := filepath.Join(tmpDir, "kustomize.tar.gz")
 	defer func() {
 		err = os.Remove(tarFile)
 		if err != nil {

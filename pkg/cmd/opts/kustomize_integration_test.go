@@ -3,6 +3,7 @@
 package opts_test
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -15,15 +16,8 @@ import (
 	"github.com/jenkins-x/jx/pkg/log"
 )
 
-// TestCommonOptions_EnsureKustomize tests that Kustomize is properly installed
-func TestCommonOptions_EnsureKustomizeNoBinaryInstalled(t *testing.T) {
-	o := opts.NewCommonOptionsWithFactory(clients.NewFactory())
-	o.NoBrew = true
-	version, _ := o.Kustomize().Version()
-	if version != "" {
-		return
-	}
-
+// TestInstallKustomize tests that Kustomize gets properly installed into JX_HOME
+func TestInstallKustomize(t *testing.T) {
 	origJXHome, testJXHome, err := testhelpers.CreateTestJxHomeDir()
 	assert.NoError(t, err, "Failed to create a test JX Home directory")
 
@@ -34,25 +28,30 @@ func TestCommonOptions_EnsureKustomizeNoBinaryInstalled(t *testing.T) {
 		}
 	}()
 
-	err = o.EnsureKustomize()
-	assert.NoError(t, err, "EnsureKustomize() error for test case TestCommonOptions_EnsureKustomizeNoBinaryInstalled")
+	o := opts.NewCommonOptionsWithFactory(clients.NewFactory())
+	o.NoBrew = true
 
-	// test that tmpJXHome/bin contains kustomize binary
-	version, err = o.Kustomize().Version()
+	err = o.InstallKustomize()
+	assert.NoError(t, err, "Error installing kustomize")
 
+	// test that tmpJXHome/bin contains kustomize binary and retrieve its version
+	// unset PATH to ensure no unwanted binary will be used
+	origPath := os.Getenv("PATH")
+	err = os.Setenv("PATH", "")
+	assert.NoError(t, err, "unable to temporarily unset PATH: %s", err)
+
+	version, err := o.Kustomize().Version()
 	assert.FileExists(t, filepath.Join(testJXHome, "bin", "kustomize"))
-	assert.NoError(t, err, "Kustomize was not installed in the temp dir of test TestCommonOptions_EnsureKustomizeNoBinaryInstalled %s: %s", testJXHome)
+	assert.NoError(t, err, "kustomize was not installed in the temp JX_HOME %s", testJXHome)
+
+	err = os.Setenv("PATH", origPath)
+	assert.NoError(t, err, "unable to reset PATH: %s", err)
 
 	// get the stable jx supported version of kustomize to be install
 	versionResolver, err := o.GetVersionResolver()
-	if err != nil {
-		log.Logger().Warnf("Unable to get version resolver for jenkins-x-versions %s", err)
-	}
+	assert.NoError(t, err, "unable to retrieve version resolver")
 
 	stableVersion, err := versionResolver.StableVersion(versionstream.KindPackage, "kustomize")
-	if err != nil {
-		log.Logger().Warnf("Unable to get stable version from the jenkins-x-versions for github.com/%s/%s %v ", "kubernetes-sigs", "kustomize", err)
-	}
-
+	assert.NoError(t, err, "unable to retrieve stable version for kustomize from version resolver")
 	assert.Contains(t, version, stableVersion.Version)
 }
