@@ -175,8 +175,7 @@ func CleanupTestJxHomeDir(originalDir, tempDir string) (err error) {
 	}
 
 	if err != nil || originalDir == "" {
-		os.Unsetenv("JX_HOME")
-		log.Logger().Warnf("Unable to set JX original home directory variable : %v", err)
+		_ = os.Unsetenv("JX_HOME")
 	}
 
 	err = os.RemoveAll(tempDir)
