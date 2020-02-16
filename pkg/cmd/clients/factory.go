@@ -781,5 +781,9 @@ func (f *factory) CreateCertManagerClient() (certmngclient.Interface, error) {
 
 // CreateKustomizer creates a Kustomize client
 func (f *factory) CreateKustomizer() kustomize.Kustomizer {
+<<<<<<< HEAD
 	return kustomize.NewKustomizeCLI("")
+=======
+	return kustomize.NewKustomizeCLI()
+>>>>>>> ce287f89a20c832068d763f94f9f8c94c1b6696c
 }
