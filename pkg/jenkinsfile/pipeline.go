@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"regexp"
 	"strconv"
 	"strings"
 	"text/template"
@@ -58,10 +57,6 @@ var (
 
 	// CreateStepModes the step creation modes
 	CreateStepModes = []string{CreateStepModePre, CreateStepModePost, CreateStepModeReplace}
-
-	ipAddressRegistryRegex = regexp.MustCompile(`\d+\.\d+\.\d+\.\d+.\d+(:\d+)?`)
-
-	commandIsSkaffoldRegex = regexp.MustCompile(`export VERSION=.*? && skaffold build.*`)
 )
 
 // Pipelines contains all the different kinds of pipeline for different branches
@@ -814,20 +809,6 @@ func (c *PipelineConfig) createPipelineSteps(step *syntax.Step, prefixPath strin
 	if step.Dir != "" {
 		dir = step.Dir
 	}
-	// Replace the Go buildpack path with the correct location for Tekton builds.
-	dir = strings.Replace(dir, "/home/jenkins/go/src/REPLACE_ME_GIT_PROVIDER/REPLACE_ME_ORG/REPLACE_ME_APP_NAME", args.WorkspaceDir, -1)
-
-	dir = strings.Replace(dir, util.PlaceHolderAppName, args.GitName, -1)
-	dir = strings.Replace(dir, util.PlaceHolderOrg, args.GitOrg, -1)
-	dir = strings.Replace(dir, util.PlaceHolderGitProvider, strings.ToLower(args.GitHost), -1)
-	dir = strings.Replace(dir, util.PlaceHolderDockerRegistryOrg, args.DockerRegistryOrg, -1)
-
-	if strings.HasPrefix(dir, "./") {
-		dir = args.WorkspaceDir + strings.TrimPrefix(dir, ".")
-	}
-	if !filepath.IsAbs(dir) {
-		dir = filepath.Join(args.WorkspaceDir, dir)
-	}
 
 	if step.GetCommand() != "" {
 		if containerName == "" {
@@ -855,9 +836,7 @@ func (c *PipelineConfig) createPipelineSteps(step *syntax.Step, prefixPath strin
 
 		s.Dir = dir
 
-		modifyStep := c.modifyStep(s, dir, args.DockerRegistry, args.DockerRegistryOrg, args.GitName, args.ProjectID, args.KanikoImage, args.UseKaniko)
-
-		steps = append(steps, modifyStep)
+		steps = append(steps, s)
 	} else if step.Loop != nil {
 		// Just copy in the loop step without altering it.
 		// TODO: We don't get magic around image resolution etc, but we avoid naming collisions that result otherwise.
@@ -887,41 +866,6 @@ func replaceCommandText(step *syntax.Step) string {
 		answer = strings.Replace(answer, text, "${VERSION}", -1)
 	}
 	return answer
-}
-
-// modifyStep allows a container step to be modified to do something different
-func (c *PipelineConfig) modifyStep(parsedStep syntax.Step, workspaceDir, dockerRegistry, dockerRegistryOrg, appName, projectID, kanikoImage string, useKaniko bool) syntax.Step {
-	if useKaniko {
-		if strings.HasPrefix(parsedStep.GetCommand(), "skaffold build") ||
-			(len(parsedStep.Arguments) > 0 && strings.HasPrefix(strings.Join(parsedStep.Arguments[1:], " "), "skaffold build")) ||
-			commandIsSkaffoldRegex.MatchString(parsedStep.GetCommand()) {
-
-			sourceDir := workspaceDir
-			dockerfile := filepath.Join(sourceDir, "Dockerfile")
-			localRepo := dockerRegistry
-			destination := dockerRegistry + "/" + dockerRegistryOrg + "/" + appName
-
-			args := []string{"--cache=true", "--cache-dir=/workspace",
-				"--context=" + sourceDir,
-				"--dockerfile=" + dockerfile,
-				"--destination=" + destination + ":${inputs.params.version}",
-				"--cache-repo=" + localRepo + "/" + projectID + "/cache",
-			}
-			if localRepo != "gcr.io" {
-				args = append(args, "--skip-tls-verify-registry="+localRepo)
-			}
-
-			if ipAddressRegistryRegex.MatchString(localRepo) {
-				args = append(args, "--insecure")
-			}
-
-			parsedStep.Command = "/kaniko/executor"
-			parsedStep.Arguments = args
-
-			parsedStep.Image = kanikoImage
-		}
-	}
-	return parsedStep
 }
 
 // createStageForBuildPack generates the Task for a build pack

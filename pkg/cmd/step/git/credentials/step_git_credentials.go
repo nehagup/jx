@@ -25,16 +25,20 @@ import (
 )
 
 const (
-	optionOutputFile     = "output"
+	optionOutputFile = "output"
+	// Deprecated
 	optionGitHubAppOwner = "github-app-owner"
+	optionRepoOwner      = "repo-owner"
 )
 
 // StepGitCredentialsOptions contains the command line flags
 type StepGitCredentialsOptions struct {
 	step.StepOptions
 
-	OutputFile        string
+	OutputFile string
+	// Deprecated
 	GitHubAppOwner    string
+	RepoOwner         string
 	GitKind           string
 	CredentialsSecret string
 	CredentialHelper  bool
@@ -77,10 +81,13 @@ func NewCmdStepGitCredentials(commonOpts *opts.CommonOptions) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVarP(&options.OutputFile, optionOutputFile, "o", "", "The output file name")
-	cmd.Flags().StringVarP(&options.GitHubAppOwner, optionGitHubAppOwner, "g", "", "The owner (organisation or user name) if using GitHub App based tokens")
+	cmd.Flags().StringVarP(&options.GitHubAppOwner, optionGitHubAppOwner, "g", "", "Deprecated - The owner (organisation or user name) if using GitHub App based tokens")
+	cmd.Flags().StringVarP(&options.RepoOwner, optionRepoOwner, "r", "", "The owner (organisation or user name) if using GitHub App based tokens")
+
 	cmd.Flags().StringVarP(&options.CredentialsSecret, "credentials-secret", "s", "", "The secret name to read the credentials from")
 	cmd.Flags().StringVarP(&options.GitKind, "git-kind", "", "", "The git kind. e.g. github, bitbucketserver etc")
 	cmd.Flags().BoolVar(&options.CredentialHelper, "credential-helper", false, "respond to a gitcredentials request")
+
 	return cmd
 }
 
@@ -123,8 +130,13 @@ func (o *StepGitCredentialsOptions) Run() error {
 		return err
 	}
 
-	if gha && o.GitHubAppOwner == "" {
-		log.Logger().Infof("this command does nothing if using github app mode and no %s option specified", optionGitHubAppOwner)
+	if o.RepoOwner == "" && o.GitHubAppOwner != "" {
+		log.Logger().Warnf("The flag --%s is deprecated, use --%s instead", optionGitHubAppOwner, optionRepoOwner)
+		o.RepoOwner = o.GitHubAppOwner
+	}
+
+	if gha && o.RepoOwner == "" {
+		log.Logger().Infof("this command does nothing if using github app mode and no %s option specified", optionRepoOwner)
 		return nil
 	}
 
@@ -141,7 +153,7 @@ func (o *StepGitCredentialsOptions) Run() error {
 		}
 	}
 
-	credentials, err := o.CreateGitCredentialsFromAuthService(authConfigSvc)
+	credentials, err := o.CreateGitCredentialsFromAuthService(authConfigSvc, gha)
 	if err != nil {
 		return errors.Wrap(err, "creating git credentials")
 	}
@@ -219,7 +231,7 @@ func (o *StepGitCredentialsOptions) createGitCredentialsFile(fileName string, cr
 }
 
 // CreateGitCredentialsFromAuthService creates the git credentials using the auth config service
-func (o *StepGitCredentialsOptions) CreateGitCredentialsFromAuthService(authConfigSvc auth.ConfigService) ([]credentialhelper.GitCredential, error) {
+func (o *StepGitCredentialsOptions) CreateGitCredentialsFromAuthService(authConfigSvc auth.ConfigService, githubAppEnabled bool) ([]credentialhelper.GitCredential, error) {
 	var credentialList []credentialhelper.GitCredential
 
 	cfg := authConfigSvc.Config()
@@ -229,7 +241,7 @@ func (o *StepGitCredentialsOptions) CreateGitCredentialsFromAuthService(authConf
 
 	for _, server := range cfg.Servers {
 		var auths []*auth.UserAuth
-		if o.GitHubAppOwner != "" {
+		if githubAppEnabled && o.RepoOwner != "" {
 			auths = server.Users
 		} else {
 			gitAuth := server.CurrentAuth()
@@ -240,7 +252,7 @@ func (o *StepGitCredentialsOptions) CreateGitCredentialsFromAuthService(authConf
 			}
 		}
 		for _, gitAuth := range auths {
-			if o.GitHubAppOwner != "" && gitAuth.GithubAppOwner != o.GitHubAppOwner {
+			if githubAppEnabled && o.RepoOwner != "" && gitAuth.GithubAppOwner != o.RepoOwner {
 				continue
 			}
 			username := gitAuth.Username

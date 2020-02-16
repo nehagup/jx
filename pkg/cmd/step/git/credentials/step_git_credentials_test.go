@@ -100,7 +100,7 @@ var _ = Describe("step git merge", func() {
 				OutputFile: outFile,
 			}
 
-			credentials, err := options.CreateGitCredentialsFromAuthService(authSvc)
+			credentials, err := options.CreateGitCredentialsFromAuthService(authSvc, false)
 			Expect(err).Should(BeNil())
 			err = options.createGitCredentialsFile(outFile, credentials)
 			Expect(err).Should(BeNil())
@@ -117,12 +117,12 @@ var _ = Describe("step git merge", func() {
 			`)
 
 			options := &StepGitCredentialsOptions{
-				OutputFile:     outFile,
-				GitHubAppOwner: "jstrachan-gh-app",
-				GitKind:        gits.KindGitHub,
+				OutputFile: outFile,
+				RepoOwner:  "jstrachan-gh-app",
+				GitKind:    gits.KindGitHub,
 			}
 
-			credentials, err := options.CreateGitCredentialsFromAuthService(authSvc)
+			credentials, err := options.CreateGitCredentialsFromAuthService(authSvc, true)
 			Expect(err).Should(BeNil())
 			err = options.createGitCredentialsFile(outFile, credentials)
 			Expect(err).Should(BeNil())

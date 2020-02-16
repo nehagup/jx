@@ -39,6 +39,12 @@ const (
 	braceMatchingRegex = "(\\$(\\{(?P<var>inputs\\.params\\.[_a-zA-Z][_a-zA-Z0-9.-]*)\\}))"
 )
 
+var (
+	ipAddressRegistryRegex = regexp.MustCompile(`\d+\.\d+\.\d+\.\d+.\d+(:\d+)?`)
+
+	commandIsSkaffoldRegex = regexp.MustCompile(`export VERSION=.*? && skaffold build.*`)
+)
+
 // ParsedPipeline is the internal representation of the Pipeline, used to validate and create CRDs
 type ParsedPipeline struct {
 	Agent      *Agent          `json:"agent,omitempty"`
@@ -1089,6 +1095,144 @@ func (j *ParsedPipeline) GetPossibleAffinityPolicy(name string) *corev1.Affinity
 		}
 	}
 	return nil
+}
+
+// StepPlaceholderReplacementArgs specifies the arguments required for replacing placeholders in build pack directories.
+type StepPlaceholderReplacementArgs struct {
+	WorkspaceDir      string
+	GitName           string
+	GitOrg            string
+	GitHost           string
+	DockerRegistry    string
+	DockerRegistryOrg string
+	ProjectID         string
+	KanikoImage       string
+	UseKaniko         bool
+}
+
+func (p *StepPlaceholderReplacementArgs) workingDirAsPointer() *string {
+	// TODO: Is there a better way to ensure that we're creating a pointer of a copy of the string?
+	copyOfWorkingDir := p.WorkspaceDir
+	return &copyOfWorkingDir
+}
+
+// ReplacePlaceholdersInStepAndStageDirs traverses this pipeline's stages and any nested stages for any steps (and any nested steps)
+// within the stages, and replaces "REPLACE_ME_..." placeholders in those steps' directories.
+func (j *ParsedPipeline) ReplacePlaceholdersInStepAndStageDirs(args StepPlaceholderReplacementArgs) {
+	var stages []Stage
+	for _, s := range j.Stages {
+		s.replacePlaceholdersInStage(j.WorkingDir, args)
+		stages = append(stages, s)
+	}
+	j.Stages = stages
+}
+
+func (s *Stage) replacePlaceholdersInStage(parentDir *string, args StepPlaceholderReplacementArgs) {
+	var steps []Step
+	var stages []Stage
+	var parallel []Stage
+	// If there's no working directory and this stage contains steps, we should set a stage directory
+	if s.WorkingDir == nil && len(s.Steps) > 0 {
+		// If there's no parent working directory, use the default provided.
+		if parentDir == nil {
+			s.WorkingDir = args.workingDirAsPointer()
+		} else {
+			s.WorkingDir = parentDir
+		}
+	}
+	s.WorkingDir = replacePlaceholdersInDir(s.WorkingDir, args)
+	for _, step := range s.Steps {
+		step.replacePlaceholdersInStep(args)
+		steps = append(steps, step)
+	}
+	for _, nested := range s.Stages {
+		nested.replacePlaceholdersInStage(s.WorkingDir, args)
+		stages = append(stages, nested)
+	}
+	for _, p := range s.Parallel {
+		p.replacePlaceholdersInStage(s.WorkingDir, args)
+		parallel = append(parallel, p)
+	}
+	s.Steps = steps
+	s.Stages = stages
+	s.Parallel = parallel
+}
+
+func replacePlaceholdersInDir(originalDir *string, args StepPlaceholderReplacementArgs) *string {
+	if originalDir == nil || *originalDir == "" {
+		return originalDir
+	}
+	dir := *originalDir
+	// Replace the Go buildpack path with the correct location for Tekton builds.
+	dir = strings.Replace(dir, "/home/jenkins/go/src/REPLACE_ME_GIT_PROVIDER/REPLACE_ME_ORG/REPLACE_ME_APP_NAME", args.WorkspaceDir, -1)
+
+	dir = strings.Replace(dir, util.PlaceHolderAppName, args.GitName, -1)
+	dir = strings.Replace(dir, util.PlaceHolderOrg, args.GitOrg, -1)
+	dir = strings.Replace(dir, util.PlaceHolderGitProvider, strings.ToLower(args.GitHost), -1)
+	dir = strings.Replace(dir, util.PlaceHolderDockerRegistryOrg, args.DockerRegistryOrg, -1)
+
+	if strings.HasPrefix(dir, "./") {
+		dir = args.WorkspaceDir + strings.TrimPrefix(dir, ".")
+	}
+	if !filepath.IsAbs(dir) {
+		dir = filepath.Join(args.WorkspaceDir, dir)
+	}
+	return &dir
+}
+
+func (s *Step) replacePlaceholdersInStep(args StepPlaceholderReplacementArgs) {
+	if s.GetCommand() != "" {
+		s.modifyStep(args)
+		s.Dir = *replacePlaceholdersInDir(&s.Dir, args)
+	}
+	var steps []*Step
+	for _, nested := range s.Steps {
+		nested.replacePlaceholdersInStep(args)
+		steps = append(steps, nested)
+	}
+	s.Steps = steps
+	if s.Loop != nil {
+		var loopSteps []Step
+		for _, nested := range s.Loop.Steps {
+			nested.replacePlaceholdersInStep(args)
+			loopSteps = append(loopSteps, nested)
+		}
+		s.Loop.Steps = loopSteps
+	}
+}
+
+// modifyStep allows a container step to be modified to do something different
+func (s *Step) modifyStep(params StepPlaceholderReplacementArgs) {
+	if params.UseKaniko {
+		if strings.HasPrefix(s.GetCommand(), "skaffold build") ||
+			(len(s.Arguments) > 0 && strings.HasPrefix(strings.Join(s.Arguments[1:], " "), "skaffold build")) ||
+			commandIsSkaffoldRegex.MatchString(s.GetCommand()) {
+
+			sourceDir := params.WorkspaceDir
+			dockerfile := filepath.Join(sourceDir, "Dockerfile")
+			localRepo := params.DockerRegistry
+			destination := params.DockerRegistry + "/" + params.DockerRegistryOrg + "/" + params.GitName
+
+			args := []string{"--cache=true", "--cache-dir=/workspace",
+				"--context=" + sourceDir,
+				"--dockerfile=" + dockerfile,
+				"--destination=" + destination + ":${inputs.params.version}",
+				"--cache-repo=" + localRepo + "/" + params.ProjectID + "/cache",
+			}
+			if localRepo != "gcr.io" {
+				args = append(args, "--skip-tls-verify-registry="+localRepo)
+			}
+
+			if ipAddressRegistryRegex.MatchString(localRepo) {
+				args = append(args, "--insecure")
+			}
+
+			s.Command = "/kaniko/executor"
+			s.Arguments = args
+
+			s.Image = params.KanikoImage
+		}
+	}
 }
 
 // AddContainerEnvVarsToPipeline allows for adding a slice of container environment variables directly to the

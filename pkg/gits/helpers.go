@@ -465,6 +465,7 @@ func ForkAndPullRepo(gitURL string, dir string, baseRef string, branchName strin
 
 	username := provider.CurrentUsername()
 	originalOrg := originalInfo.Organisation
+	repoOwner := originalInfo.Organisation
 	originalRepo := originalInfo.Name
 	originRemote := "origin"
 	upstreamRemote := originRemote
@@ -485,6 +486,7 @@ func ForkAndPullRepo(gitURL string, dir string, baseRef string, branchName strin
 	// check whether we are going to change the upstream remote (e.g. on initial boot)
 	upstreamChange := false
 	if dirExists {
+		log.Logger().Debugf("dir %s already exists", dir)
 		d, gitConfig, err := gitter.FindGitConfigDir(dir)
 		if err != nil {
 			return "", "", nil, nil, errors.Wrapf(err, "checking if %s is already a git repository", dir)
@@ -538,7 +540,8 @@ func ForkAndPullRepo(gitURL string, dir string, baseRef string, branchName strin
 				}
 				forkInfo = renamedInfo
 			}
-			log.Logger().Infof("Forked Git repository to %s\n", util.ColorInfo(forkInfo.HTMLURL))
+			log.Logger().Infof("Forked Git repository to %s", util.ColorInfo(forkInfo.HTMLURL))
+			repoOwner = forkInfo.Organisation
 		}
 		originURL = forkInfo.CloneURL
 	}
@@ -576,7 +579,7 @@ func ForkAndPullRepo(gitURL string, dir string, baseRef string, branchName strin
 	}
 
 	// configure jx as git credential helper for this repo
-	err = configureJxAsGitCredentialHelper(dir, gitter)
+	err = configureJxAsGitCredentialHelper(dir, gitter, repoOwner)
 	if err != nil {
 		return "", "", nil, nil, errors.Wrap(err, "unable to configure jx as git credential helper")
 	}
@@ -713,13 +716,15 @@ func ForkAndPullRepo(gitURL string, dir string, baseRef string, branchName strin
 	return dir, baseRef, upstreamInfo, forkInfo, nil
 }
 
-func configureJxAsGitCredentialHelper(dir string, gitter Gitter) error {
+func configureJxAsGitCredentialHelper(dir string, gitter Gitter, repoOwner string) error {
 	// configure jx as git credential helper for this repo
 	jxProcessBinary, err := os.Executable()
 	if err != nil {
 		return errors.Wrapf(err, "unable to determine jx binary location")
 	}
-	return gitter.Config(dir, "--local", "credential.helper", fmt.Sprintf("%s step git credentials --credential-helper", jxProcessBinary))
+	config := []string{"--local", "credential.helper", fmt.Sprintf("%s step git credentials --credential-helper --repo-owner %s", jxProcessBinary, repoOwner)}
+	log.Logger().Debugf("setting git config to: %s", strings.Join(config, " "))
+	return gitter.Config(dir, config...)
 }
 
 // AddUserToURL adds the specified user to the given git URL and returns the new URL.
@@ -938,7 +943,7 @@ func DuplicateGitRepoFromCommitish(toOrg string, toName string, fromGitURL strin
 		return nil, err
 	}
 
-	err = configureJxAsGitCredentialHelper(dir, gitter)
+	err = configureJxAsGitCredentialHelper(dir, gitter, duplicateInfo.Organisation)
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to configure jx as git credential helper")
 	}
